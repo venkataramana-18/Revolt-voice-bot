@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Revolt Motors AI Assistant</title>
+  <style>
+    :root {
+      --primary: #0066cc;
+      --error: #e74c3c;
+      --success: #2ecc71;
+      --gray: #95a5a6;
+    }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f8f9fa;
+      line-height: 1.6;
+    }
+    h1 {
+      color: var(--primary);
+      text-align: center;
+      margin-bottom: 25px;
+    }
+    #controls {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      margin-bottom: 25px;
+      flex-wrap: wrap;
+    }
+    #mic-btn {
+      padding: 12px 24px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 50px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      min-width: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    #mic-btn.listening {
+      background: var(--error);
+      animation: pulse 1.5s infinite;
+    }
+    #mic-btn:disabled {
+      background: var(--gray);
+      cursor: not-allowed;
+    }
+    #language-selector {
+      padding: 10px 15px;
+      border-radius: 50px;
+      border: 1px solid #ddd;
+      background: white;
+    }
+    #conversation {
+      min-height: 300px;
+      border-radius: 8px;
+      background: white;
+      padding: 25px;
+      box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+    }
+    .message {
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #eee;
+    }
+    .message:last-child {
+      border-bottom: none;
+    }
+    .user {
+      color: var(--primary);
+      font-weight: 600;
+    }
+    .assistant {
+      color: #2c3e50;
+    }
+    .status {
+      color: var(--gray);
+      font-style: italic;
+    }
+    .error {
+      color: var(--error);
+      background: #fde8e8;
+      padding: 10px 15px;
+      border-radius: 6px;
+      display: inline-block;
+    }
+    #loading-dots {
+      display: inline-block;
+    }
+    #loading-dots::after {
+      content: '.';
+      animation: dots 1.5s steps(5, end) infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7); }
+      70% { box-shadow: 0 0 0 12px rgba(231, 76, 60, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
+    }
+    @keyframes dots {
+      0%, 20% { content: '.'; }
+      40% { content: '..'; }
+      60%, 100% { content: '...'; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Revolt Motors AI Assistant</h1>
+  
+  <div id="controls">
+    <button id="mic-btn">
+      <span id="mic-icon">🎤</span>
+      <span id="mic-text">Start Speaking</span>
+    </button>
+    <select id="language-selector">
+      <option value="en-US">English</option>
+      <option value="hi-IN">Hindi</option>
+      <option value="mr-IN">Marathi</option>
+    </select>
+  </div>
+  
+  <div id="conversation">
+    <p class="status">Press the microphone button and ask about our electric bikes</p>
+  </div>
+
+  <script>
+    // DOM Elements
+    const micBtn = document.getElementById('mic-btn');
+    const micIcon = document.getElementById('mic-icon');
+    const micText = document.getElementById('mic-text');
+    const conversationDiv = document.getElementById('conversation');
+    const languageSelector = document.getElementById('language-selector');
+    
+    // State Management
+    let isProcessing = false;
+
+    // Initialize Speech Recognition
+    const initializeSpeechRecognition = () => {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      
+      if (!SpeechRecognition) {
+        showMessage('Your browser doesn\'t support speech recognition. Try Chrome or Edge.', 'error');
+        micBtn.disabled = true;
+        return null;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = languageSelector.value;
+      recognition.maxAlternatives = 1;
+
+      return recognition;
+    };
+
+    let recognition = initializeSpeechRecognition();
+
+    // Event Listeners
+    micBtn.addEventListener('click', toggleListening);
+    languageSelector.addEventListener('change', () => {
+      if (recognition) {
+        recognition.lang = languageSelector.value;
+      }
+    });
+
+    // Core Functions
+    function toggleListening() {
+      if (micBtn.classList.contains('listening')) {
+        stopListening();
+      } else {
+        startListening();
+      }
+    }
+
+    function startListening() {
+      if (isProcessing) return;
+      
+      micBtn.classList.add('listening');
+      micIcon.textContent = '🔴';
+      micText.textContent = 'Listening...';
+      showMessage('Listening...', 'status');
+      
+      try {
+        recognition.start();
+      } catch (error) {
+        console.error('Recognition start error:', error);
+        showMessage('Error starting microphone. Refresh page.', 'error');
+        micBtn.disabled = true;
+      }
+    }
+
+    function stopListening() {
+      micBtn.classList.remove('listening');
+      micIcon.textContent = '🎤';
+      micText.textContent = 'Start Speaking';
+      
+      try {
+        recognition.stop();
+      } catch (error) {
+        console.error('Recognition stop error:', error);
+      }
+    }
+
+    // Speech Recognition Handlers
+    recognition.onresult = async (event) => {
+      const transcript = event.results[0][0].transcript;
+      showMessage(`You: ${transcript}`, 'user');
+      
+      const thinkingMsg = showMessage('Rev: <span id="loading-dots">Thinking</span>', 'status');
+      isProcessing = true;
+      micBtn.disabled = true;
+      
+      try {
+        const response = await fetchWithTimeout('/chat', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            message: transcript,
+            language: languageSelector.value 
+          })
+        }, 8000); // 8 second timeout
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.technical || `Server error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        thinkingMsg.remove();
+        showMessage(`Rev: ${data.reply}`, 'assistant');
+        speak(data.reply);
+        
+      } catch (error) {
+        console.error('API Error:', error);
+        thinkingMsg.remove();
+        showMessage(`Error: ${error.message.replace('Error: ', '')}`, 'error');
+      } finally {
+        isProcessing = false;
+        micBtn.disabled = false;
+        stopListening();
+      }
+    };
+
+    recognition.onerror = (event) => {
+      let message = 'Error: ';
+      switch(event.error) {
+        case 'no-speech':
+          message = 'No speech detected. Try speaking louder.';
+          break;
+        case 'audio-capture':
+          message = 'Microphone not available. Check permissions.';
+          break;
+        case 'not-allowed':
+          message = 'Microphone access denied. Please allow access.';
+          break;
+        default:
+          message += event.error;
+      }
+      
+      showMessage(message, 'error');
+      stopListening();
+    };
+
+    // Helper Functions
+    function showMessage(text, type) {
+      const messageDiv = document.createElement('div');
+      messageDiv.classList.add('message', type);
+      
+      if (typeof text === 'string') {
+        messageDiv.innerHTML = text;
+      } else {
+        messageDiv.appendChild(text);
+      }
+      
+      conversationDiv.appendChild(messageDiv);
+      conversationDiv.scrollTop = conversationDiv.scrollHeight;
+      return messageDiv;
+    }
+
+    async function fetchWithTimeout(resource, options = {}, timeout = 8000) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      try {
+        const response = await fetch(resource, {
+          ...options,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return response;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        throw error;
+      }
+    }
+
+    function speak(text) {
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = recognition.lang;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+  </script>
+</body>
+</html>
